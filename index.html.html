@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>Ideate ROI Calculator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: 'Inter', sans-serif; background: #f8fafc; }
+      input[type=range] {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: #e2e8f0;
+        outline: none;
+      }
+      input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        height: 18px;
+        width: 18px;
+        border-radius: 50%;
+        background: #2563eb;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(37,99,235,0.4);
+      }
+      input[type=range]::-moz-range-thumb {
+        height: 18px;
+        width: 18px;
+        border-radius: 50%;
+        background: #2563eb;
+        cursor: pointer;
+        border: none;
+      }
+    </style>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: { DEFAULT: '#2563eb', foreground: '#fff' },
+            },
+            fontFamily: {
+              display: ['Inter', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+const { useState, useRef, useEffect, useMemo, useContext, createContext, memo } = React;
+const { createRoot } = ReactDOM;
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function cn(...args) {
+  return args.filter(Boolean).join(' ');
+}
+function fmtCurrency(n) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+}
+function fmtNum(n) {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(n);
+}
+function tpl(str, vars) {
+  return str.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+}
+
+// ── i18n ───────────────────────────────────────────────────────────────────
+const TRANSLATIONS = {
+  en: {
+    heroTitle: "Discover your hidden costs",
+    heroSubtitle: "See how much time and money your team is losing to inefficient file management, and learn what you could save with Ideate.",
+    parametersTitle: "Your Parameters",
+    sliderEmployeesLabel: "Number of Employees",
+    sliderEmployeesDesc: "Total size of your PM and Design teams",
+    sliderHoursLabel: "Hours Wasted / Day",
+    sliderHoursDesc: "Average time spent on file transfer (local and cloud)",
+    hrs: "hrs",
+    sliderRateLabel: "Hourly Rate",
+    sliderRateDesc: "Average fully-loaded hourly cost per employee",
+    hoursLostTitle: "Hours Lost Per Week",
+    hoursLostDesc: "Total team hours wasted on file management",
+    moneyWastedTitle: "Money Wasted Per Year",
+    moneyWastedDesc: "Financial impact of current inefficiencies",
+    savingsTitle: "Potential Annual Savings with Ideate",
+    savingsDesc: "Based on an 80% reduction in time wasted across your team",
+    scaleLabel: "The Compounding Cost of Scale",
+    conflictsTitle: "File Locking & Version Conflicts",
+    conflictsDesc: "Collision probability grows super-linearly with concurrent access across distributed teams.",
+    conflictsWeek: "Conflicts / Week",
+    annualReworkCost: "Annual Rework Cost",
+    sprawlTitle: "Data Sprawl & Single Source of Truth",
+    sprawlDesc: "Each new team introduces new storage behaviors, fragmenting data across silos and killing AI readiness.",
+    storageSilos: "Storage Silos",
+    duplicateDocs: "Duplicate Docs",
+    aiReadiness: "AI Readiness",
+    severity: "Severity",
+    severityLow: "Low Risk",
+    severityMedium: "Medium Risk",
+    severityHigh: "High Risk",
+    severityCritical: "Critical",
+    tableTitle: "ROI Reference Matrix",
+    tableAssuming: "Assuming 80% efficiency gain with Ideate",
+    tableSubtitle: "Calculated at your selected {hours} hours/day and {rate}/hr rate.",
+    colTeamSize: "Team Size",
+    colHoursDay: "Hours / Day",
+    colHoursWeek: "Hours / Week",
+    colCostHour: "Cost / Hour",
+    colMoneyYear: "Money Spent / Year",
+    colSavings: "Potential Savings",
+    disclaimer: "** This estimate does not take into account the implications that may occur if documents are not stored in the proper location, and the additional hours of work that will be required to rectify those instances. Actual savings could be significantly higher."
+  },
+  fr: {
+    heroTitle: "Découvrez vos coûts cachés",
+    heroSubtitle: "Voyez combien de temps et d'argent votre équipe perd à cause d'une gestion inefficace des fichiers, et découvrez ce que vous pourriez économiser avec Ideate.",
+    parametersTitle: "Vos Paramètres",
+    sliderEmployeesLabel: "Nombre d'Employés",
+    sliderEmployeesDesc: "Taille totale de vos équipes PM et Design",
+    sliderHoursLabel: "Heures Perdues / Jour",
+    sliderHoursDesc: "Temps moyen passé sur les transferts de fichiers (local et cloud)",
+    hrs: "h",
+    sliderRateLabel: "Taux Horaire",
+    sliderRateDesc: "Coût horaire moyen chargé par employé",
+    hoursLostTitle: "Heures Perdues par Semaine",
+    hoursLostDesc: "Total des heures d'équipe gaspillées en gestion de fichiers",
+    moneyWastedTitle: "Argent Gaspillé par An",
+    moneyWastedDesc: "Impact financier des inefficacités actuelles",
+    savingsTitle: "Économies Annuelles Potentielles avec Ideate",
+    savingsDesc: "Basé sur une réduction de 80% du temps perdu par votre équipe",
+    scaleLabel: "Le Coût Cumulatif de l'Échelle",
+    conflictsTitle: "Verrouillage de Fichiers & Conflits de Version",
+    conflictsDesc: "La probabilité de collision croît de façon super-linéaire avec les accès simultanés dans les équipes distribuées.",
+    conflictsWeek: "Conflits / Semaine",
+    annualReworkCost: "Coût Annuel de Reprise",
+    sprawlTitle: "Dispersion des Données & Source Unique de Vérité",
+    sprawlDesc: "Chaque nouvelle équipe introduit de nouveaux comportements de stockage, fragmentant les données en silos.",
+    storageSilos: "Silos de Stockage",
+    duplicateDocs: "Docs Dupliqués",
+    aiReadiness: "Prêt pour l'IA",
+    severity: "Sévérité",
+    severityLow: "Risque Faible",
+    severityMedium: "Risque Moyen",
+    severityHigh: "Risque Élevé",
+    severityCritical: "Critique",
+    tableTitle: "Matrice de Référence ROI",
+    tableAssuming: "En supposant 80% de gain d'efficacité avec Ideate",
+    tableSubtitle: "Calculé avec {hours} heures/jour et {rate}/h sélectionnés.",
+    colTeamSize: "Taille d'Équipe",
+    colHoursDay: "Heures / Jour",
+    colHoursWeek: "Heures / Semaine",
+    colCostHour: "Coût / Heure",
+    colMoneyYear: "Argent Dépensé / An",
+    colSavings: "Économies Potentielles",
+    disclaimer: "** Cette estimation ne prend pas en compte les implications qui peuvent survenir lorsque les documents ne sont pas stockés au bon endroit. Les économies réelles pourraient être nettement plus élevées."
+  },
+  de: {
+    heroTitle: "Entdecken Sie Ihre versteckten Kosten",
+    heroSubtitle: "Sehen Sie, wie viel Zeit und Geld Ihr Team durch ineffizientes Dateimanagement verliert, und erfahren Sie, wie viel Sie mit Ideate einsparen könnten.",
+    parametersTitle: "Ihre Parameter",
+    sliderEmployeesLabel: "Anzahl der Mitarbeiter",
+    sliderEmployeesDesc: "Gesamtgröße Ihrer PM- und Design-Teams",
+    sliderHoursLabel: "Verlorene Stunden / Tag",
+    sliderHoursDesc: "Durchschnittliche Zeit für Dateiübertragungen (lokal und Cloud)",
+    hrs: "Std.",
+    sliderRateLabel: "Stundensatz",
+    sliderRateDesc: "Durchschnittliche Vollkostenrate pro Mitarbeiter und Stunde",
+    hoursLostTitle: "Verlorene Stunden pro Woche",
+    hoursLostDesc: "Gesamte Teamstunden, die für Dateimanagement verschwendet werden",
+    moneyWastedTitle: "Verschwendetes Geld pro Jahr",
+    moneyWastedDesc: "Finanzielle Auswirkungen aktueller Ineffizienzen",
+    savingsTitle: "Potenzielle Jahrseinsparungen mit Ideate",
+    savingsDesc: "Basierend auf einer 80%igen Reduzierung der verschwendeten Zeit in Ihrem Team",
+    scaleLabel: "Die Kumulativen Skalenkosten",
+    conflictsTitle: "Dateisperren & Versionskonflikte",
+    conflictsDesc: "Die Kollisionswahrscheinlichkeit wächst superlinear mit dem gleichzeitigen Zugriff in verteilten Teams.",
+    conflictsWeek: "Konflikte / Woche",
+    annualReworkCost: "Jährl. Nacharbeitskosten",
+    sprawlTitle: "Datenwucherung & Einheitliche Datenquelle",
+    sprawlDesc: "Jedes neue Team bringt neue Speichergewohnheiten mit, fragmentiert Daten in Silos und beeinträchtigt die KI-Bereitschaft.",
+    storageSilos: "Speicher-Silos",
+    duplicateDocs: "Doppelte Dokumente",
+    aiReadiness: "KI-Bereitschaft",
+    severity: "Schweregrad",
+    severityLow: "Geringes Risiko",
+    severityMedium: "Mittleres Risiko",
+    severityHigh: "Hohes Risiko",
+    severityCritical: "Kritisch",
+    tableTitle: "ROI-Referenzmatrix",
+    tableAssuming: "Annahme: 80% Effizienzgewinn mit Ideate",
+    tableSubtitle: "Berechnet mit {hours} Std./Tag und {rate}/Std. als gewählter Rate.",
+    colTeamSize: "Teamgröße",
+    colHoursDay: "Stunden / Tag",
+    colHoursWeek: "Stunden / Woche",
+    colCostHour: "Kosten / Stunde",
+    colMoneyYear: "Ausgaben / Jahr",
+    colSavings: "Potenzielle Einsparungen",
+    disclaimer: "** Diese Schätzung berücksichtigt nicht die Auswirkungen, die entstehen können, wenn Dokumente nicht am richtigen Ort gespeichert werden. Die tatsächlichen Einsparungen könnten deutlich höher ausfallen."
+  }
+};
+
+const LangCtx = createContext(null);
+function LanguageProvider({ children }) {
+  const [lang, setLang] = useState('en');
+  const t = k => TRANSLATIONS[lang][k] || k;
+  return React.createElement(LangCtx.Provider, { value: { lang, setLang, t } }, children);
+}
+function useLang() { return useContext(LangCtx); }
+
+// ── Icons (inline SVG) ──────────────────────────────────────────────────────
+const Icon = ({ d, size = 20, className = '' }) =>
+  React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+    ...d.map((p, i) => React.createElement('path', { key: i, d: p }))
+  );
+
+const IconUsers = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('path', { d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' }),
+  React.createElement('path', { d: 'M16 3.128a4 4 0 0 1 0 7.744' }),
+  React.createElement('path', { d: 'M22 21v-2a4 4 0 0 0-3-3.87' }),
+  React.createElement('circle', { cx: 9, cy: 7, r: 4 })
+);
+const IconClock = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+  React.createElement('path', { d: 'M12 6v6l4 2' })
+);
+const IconDollar = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('line', { x1: 12, y1: 2, x2: 12, y2: 22 }),
+  React.createElement('path', { d: 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' })
+);
+const IconTrending = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('path', { d: 'M16 7h6v6' }),
+  React.createElement('path', { d: 'm22 7-8.5 8.5-5-5L2 17' })
+);
+const IconBriefcase = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('path', { d: 'M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16' }),
+  React.createElement('rect', { width: 20, height: 14, x: 2, y: 6, rx: 2 })
+);
+const IconGlobe = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+  React.createElement('path', { d: 'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20' }),
+  React.createElement('path', { d: 'M2 12h20' })
+);
+const IconAlert = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+  React.createElement('line', { x1: 12, x2: 12, y1: 8, y2: 12 }),
+  React.createElement('line', { x1: 12, x2: '12.01', y1: 16, y2: 16 })
+);
+const IconInfo = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+  React.createElement('path', { d: 'M12 16v-4' }),
+  React.createElement('path', { d: 'M12 8h.01' })
+);
+const IconDB = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('ellipse', { cx: 12, cy: 5, rx: 9, ry: 3 }),
+  React.createElement('path', { d: 'M3 5V19A9 3 0 0 0 21 19V5' }),
+  React.createElement('path', { d: 'M3 12A9 3 0 0 0 21 12' })
+);
+const IconMerge = ({ size, className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: size || 20, height: size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('circle', { cx: 18, cy: 18, r: 3 }),
+  React.createElement('circle', { cx: 6, cy: 6, r: 3 }),
+  React.createElement('path', { d: 'M6 21V9a9 9 0 0 0 9 9' })
+);
+const IconChevron = ({ className }) => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', className },
+  React.createElement('path', { d: 'm6 9 6 6 6-6' })
+);
+
+// ── SliderCard ──────────────────────────────────────────────────────────────
+function SliderCard({ label, description, value, min, max, step, onChange, icon, formatValue }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [editing]);
+
+  const commit = () => {
+    const n = parseFloat(draft);
+    if (!isNaN(n)) {
+      const snapped = Math.round(n / step) * step;
+      onChange(Math.min(max, Math.max(min, parseFloat(snapped.toFixed(10)))));
+    }
+    setEditing(false);
+  };
+
+  return React.createElement('div', { className: 'space-y-4 bg-white/50 p-5 rounded-xl border border-slate-100 hover:bg-white/80 transition-colors duration-300' },
+    React.createElement('div', { className: 'flex items-center justify-between' },
+      React.createElement('div', { className: 'flex items-center gap-2' },
+        icon && React.createElement('div', { className: 'text-blue-600' }, icon),
+        React.createElement('div', null,
+          React.createElement('h3', { className: 'font-semibold text-slate-800' }, label),
+          description && React.createElement('p', { className: 'text-xs text-slate-500 mt-0.5' }, description)
+        )
+      ),
+      editing
+        ? React.createElement('input', { ref: inputRef, type: 'number', value: draft, onChange: e => setDraft(e.target.value), onBlur: commit, onKeyDown: e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }, min, max, step, className: 'w-20 px-2 py-1 bg-blue-50 text-blue-600 font-bold rounded-md border-2 border-blue-400 text-sm text-center outline-none focus:border-blue-600' })
+        : React.createElement('button', { type: 'button', onClick: () => { setDraft(String(value)); setEditing(true); }, className: 'px-3 py-1 bg-blue-50 text-blue-600 font-bold rounded-md border border-blue-200 text-sm cursor-text hover:border-blue-400 transition-colors' }, formatValue(value))
+    ),
+    React.createElement('div', { className: 'pt-2' },
+      React.createElement('input', { type: 'range', min, max, step, value, onChange: e => onChange(parseFloat(e.target.value)) }),
+      React.createElement('div', { className: 'flex justify-between mt-2 text-xs text-slate-400 font-medium' },
+        React.createElement('span', null, formatValue(min)),
+        React.createElement('span', null, formatValue(max))
+      )
+    )
+  );
+}
+
+// ── StatCard ────────────────────────────────────────────────────────────────
+function StatCard({ title, value, description, icon, highlight = false, delay = 0 }) {
+  return React.createElement('div', {
+    className: cn(
+      'relative overflow-hidden rounded-2xl p-6 sm:p-8 transition-all duration-300',
+      highlight
+        ? 'bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 text-white shadow-xl shadow-blue-500/25 border-none'
+        : 'bg-white border border-slate-200 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 text-slate-800'
+    )
+  },
+    highlight && React.createElement('div', { className: 'absolute -top-24 -right-24 w-48 h-48 bg-white opacity-10 rounded-full blur-3xl pointer-events-none' }),
+    React.createElement('div', { className: 'flex items-start justify-between relative z-10' },
+      React.createElement('div', null,
+        React.createElement('h3', { className: cn('font-medium text-sm sm:text-base uppercase tracking-wider mb-2', highlight ? 'text-blue-100' : 'text-slate-500') }, title),
+        React.createElement('div', { className: cn('text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-3', highlight ? 'text-white' : 'text-slate-900') }, value),
+        React.createElement('p', { className: cn('text-sm font-medium', highlight ? 'text-blue-100' : 'text-slate-500') }, description)
+      ),
+      React.createElement('div', { className: cn('p-3 sm:p-4 rounded-xl', highlight ? 'bg-white/10 text-white' : 'bg-blue-50 text-blue-600') }, icon)
+    )
+  );
+}
+
+// ── RiskCard ────────────────────────────────────────────────────────────────
+const SEVERITY_STYLES = {
+  low:      { badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', bar: 'bg-emerald-500' },
+  medium:   { badge: 'bg-amber-100 text-amber-700 border-amber-200',   bar: 'bg-amber-400' },
+  high:     { badge: 'bg-orange-100 text-orange-700 border-orange-200', bar: 'bg-orange-500' },
+  critical: { badge: 'bg-red-100 text-red-700 border-red-200',          bar: 'bg-red-500' },
+};
+
+function RiskCard({ title, description, icon, severity, fillPct, metrics, headlineMetric, initialOpen = false }) {
+  const [open, setOpen] = useState(initialOpen);
+  const { t } = useLang();
+  const styles = SEVERITY_STYLES[severity];
+  const pct = Math.min(100, Math.max(0, fillPct));
+  const headline = headlineMetric || metrics[0];
+  const labels = { low: t('severityLow'), medium: t('severityMedium'), high: t('severityHigh'), critical: t('severityCritical') };
+
+  return React.createElement('div', { className: 'bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden' },
+    React.createElement('button', { type: 'button', onClick: () => setOpen(o => !o), className: 'w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left' },
+      React.createElement('div', { className: 'shrink-0 p-2 rounded-lg bg-slate-100 text-slate-600' }, icon),
+      React.createElement('div', { className: 'flex-1 min-w-0 flex items-baseline gap-2 overflow-hidden' },
+        React.createElement('span', { className: 'shrink-0 text-sm font-semibold text-slate-900 truncate' }, title),
+        !open && React.createElement('span', { className: 'text-xs text-slate-400 truncate' },
+          headline.label, ': ',
+          React.createElement('span', { className: 'font-semibold text-slate-600' }, headline.value)
+        )
+      ),
+      React.createElement('span', { className: cn('shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border', styles.badge) }, labels[severity]),
+      React.createElement(IconChevron, { className: cn('shrink-0 text-slate-400 transition-transform duration-200', open && 'rotate-180') })
+    ),
+    open && React.createElement('div', { className: 'overflow-hidden border-t border-slate-100' },
+      React.createElement('div', { className: 'px-4 pb-4 pt-2' },
+        React.createElement('p', { className: 'text-xs text-slate-500 mb-3 leading-snug' }, description),
+        React.createElement('div', { className: 'mb-4' },
+          React.createElement('div', { className: 'flex justify-between text-xs text-slate-400 font-medium mb-1' },
+            React.createElement('span', null, t('severity')),
+            React.createElement('span', null, Math.round(pct) + '%')
+          ),
+          React.createElement('div', { className: 'h-2 w-full rounded-full bg-slate-100 overflow-hidden' },
+            React.createElement('div', { className: cn('h-full rounded-full transition-all duration-500', styles.bar), style: { width: pct + '%' } })
+          )
+        ),
+        React.createElement('div', { className: cn('grid gap-2', metrics.length <= 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3') },
+          metrics.map(m => React.createElement('div', { key: m.label, className: 'bg-slate-50 rounded-lg px-2.5 py-2 border border-slate-100' },
+            React.createElement('div', { className: 'text-sm font-bold text-slate-900' }, m.value),
+            React.createElement('div', { className: 'text-xs text-slate-500 mt-0.5' }, m.label)
+          ))
+        )
+      )
+    )
+  );
+}
+
+// ── ROI Table ───────────────────────────────────────────────────────────────
+const TABLE_SIZES = [2, 3, 5, 10, 20, 30, 100, 500];
+
+function ROITable({ hoursPerDay, hourlyRate }) {
+  const { t } = useLang();
+  const subtitle = tpl(t('tableSubtitle'), { hours: fmtNum(hoursPerDay), rate: fmtCurrency(hourlyRate) });
+
+  return React.createElement('div', { className: 'mt-12 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden' },
+    React.createElement('div', { className: 'p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4' },
+      React.createElement('div', null,
+        React.createElement('h3', { className: 'text-xl font-bold text-slate-800 flex items-center gap-2' },
+          React.createElement(IconUsers, { size: 20, className: 'text-blue-600' }),
+          t('tableTitle')
+        ),
+        React.createElement('p', { className: 'text-sm text-slate-500 mt-1' }, subtitle)
+      ),
+      React.createElement('div', { className: 'flex items-center gap-2 text-xs text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 font-medium' },
+        React.createElement(IconInfo, { size: 16 }),
+        t('tableAssuming')
+      )
+    ),
+    React.createElement('div', { className: 'overflow-x-auto' },
+      React.createElement('table', { className: 'w-full text-sm text-left' },
+        React.createElement('thead', { className: 'text-xs text-slate-500 uppercase bg-white border-b border-slate-100' },
+          React.createElement('tr', null,
+            [t('colTeamSize'), t('colHoursDay'), t('colHoursWeek'), t('colCostHour'), t('colMoneyYear'), t('colSavings')].map((h, i) =>
+              React.createElement('th', { key: i, className: cn('px-6 py-4 font-semibold', i === 4 && 'text-slate-800', i === 5 && 'text-blue-600') }, h)
+            )
+          )
+        ),
+        React.createElement('tbody', { className: 'divide-y divide-slate-50' },
+          TABLE_SIZES.map(size => {
+            const wk = hoursPerDay * 5 * size;
+            const yr = wk * hourlyRate * 52;
+            const sv = yr * 0.8;
+            return React.createElement('tr', { key: size, className: 'hover:bg-slate-50/80 transition-colors' },
+              React.createElement('td', { className: 'px-6 py-4 font-semibold text-slate-800' }, fmtNum(size)),
+              React.createElement('td', { className: 'px-6 py-4 text-slate-600' }, fmtNum(hoursPerDay)),
+              React.createElement('td', { className: 'px-6 py-4 text-slate-600' }, fmtNum(wk)),
+              React.createElement('td', { className: 'px-6 py-4 text-slate-600' }, fmtCurrency(hourlyRate)),
+              React.createElement('td', { className: 'px-6 py-4 font-semibold text-slate-700' }, fmtCurrency(yr)),
+              React.createElement('td', { className: 'px-6 py-4 font-bold text-blue-600' }, fmtCurrency(sv))
+            );
+          })
+        )
+      )
+    )
+  );
+}
+
+// ── Language Switcher ────────────────────────────────────────────────────────
+const LANGS = [{ code: 'en', label: 'English', flag: '🇬🇧' }, { code: 'fr', label: 'Français', flag: '🇫🇷' }, { code: 'de', label: 'Deutsch', flag: '🇩🇪' }];
+
+function LangSwitcher() {
+  const { lang, setLang } = useLang();
+  const [open, setOpen] = useState(false);
+  const cur = LANGS.find(l => l.code === lang);
+
+  return React.createElement('div', { className: 'relative' },
+    React.createElement('button', { type: 'button', onClick: () => setOpen(o => !o), className: 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors border border-white/20' },
+      React.createElement(IconGlobe, { size: 14, className: 'text-white/70' }),
+      React.createElement('span', null, cur.flag + ' ' + cur.code.toUpperCase()),
+      React.createElement(IconChevron, { className: cn('text-white/60 transition-transform duration-150', open && 'rotate-180') })
+    ),
+    open && React.createElement(React.Fragment, null,
+      React.createElement('div', { className: 'fixed inset-0 z-40', onClick: () => setOpen(false) }),
+      React.createElement('div', { className: 'absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50' },
+        LANGS.map(l => React.createElement('button', { key: l.code, type: 'button', onClick: () => { setLang(l.code); setOpen(false); }, className: cn('w-full flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-slate-50 transition-colors text-left', lang === l.code ? 'text-blue-600 font-semibold bg-blue-50/50' : 'text-slate-700 font-medium') },
+          React.createElement('span', { className: 'text-base' }, l.flag),
+          React.createElement('span', null, l.label)
+        ))
+      )
+    )
+  );
+}
+
+// ── Main App ─────────────────────────────────────────────────────────────────
+function App() {
+  const { t } = useLang();
+  const [employees, setEmployees] = useState(30);
+  const [hoursPerDay, setHoursPerDay] = useState(0.5);
+  const [hourlyRate, setHourlyRate] = useState(35);
+
+  const hoursPerWeek = hoursPerDay * 5 * employees;
+  const moneyPerYear = hoursPerWeek * hourlyRate * 52;
+  const savings = moneyPerYear * 0.8;
+
+  // Version conflicts
+  const conflicts = Math.max(1, Math.round(Math.pow(employees, 1.5) / 30));
+  const reworkCost = conflicts * 1.5 * hourlyRate * 52;
+  const conflictSev = conflicts <= 5 ? 'low' : conflicts <= 20 ? 'medium' : conflicts <= 80 ? 'high' : 'critical';
+  const conflictPct = Math.min(100, conflicts / 200 * 100);
+
+  // Data sprawl
+  const silos = 2 + Math.floor(employees / 8);
+  const dupDocs = employees * 12;
+  const aiReadiness = Math.max(0, 100 - silos * 4);
+  const sprawlSev = silos <= 4 ? 'low' : silos <= 9 ? 'medium' : silos <= 19 ? 'high' : 'critical';
+  const sprawlPct = Math.min(100, silos / 65 * 100);
+
+  return React.createElement('div', { className: 'min-h-screen bg-slate-50 pb-20' },
+    // Header
+    React.createElement('header', { className: 'sticky top-0 z-50', style: { background: '#1a1a2e' } },
+      React.createElement('div', { className: 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between' },
+        React.createElement('div', { className: 'flex items-center gap-4' },
+          React.createElement('div', { className: 'flex items-center gap-2' },
+            React.createElement('div', { className: 'w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center' },
+              React.createElement('span', { className: 'text-white font-bold text-sm' }, 'I')
+            ),
+            React.createElement('span', { className: 'text-white font-bold text-lg tracking-wide' }, 'Ideate')
+          ),
+          React.createElement('div', { className: 'w-px h-8 bg-white/20' }),
+          React.createElement('div', null,
+            React.createElement('p', { className: 'text-xs text-white/50 font-medium tracking-widest uppercase' }, 'ROI Calculator')
+          )
+        ),
+        React.createElement(LangSwitcher, {})
+      )
+    ),
+    // Main
+    React.createElement('main', { className: 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12' },
+      // Hero
+      React.createElement('div', { className: 'text-center max-w-3xl mx-auto mb-12' },
+        React.createElement('h2', { className: 'text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 mb-4 leading-tight' }, t('heroTitle')),
+        React.createElement('p', { className: 'text-lg text-slate-600' }, t('heroSubtitle'))
+      ),
+      // Grid
+      React.createElement('div', { className: 'grid grid-cols-1 lg:grid-cols-12 gap-8' },
+        // Left: sliders
+        React.createElement('div', { className: 'lg:col-span-4' },
+          React.createElement('div', { className: 'bg-white rounded-2xl shadow-sm border border-slate-200 p-6' },
+            React.createElement('h3', { className: 'text-xl font-bold text-slate-900 mb-6 flex items-center gap-2' },
+              React.createElement(IconBriefcase, { size: 20, className: 'text-blue-600' }),
+              t('parametersTitle')
+            ),
+            React.createElement('div', { className: 'space-y-6' },
+              React.createElement(SliderCard, { label: t('sliderEmployeesLabel'), description: t('sliderEmployeesDesc'), value: employees, min: 1, max: 500, step: 1, onChange: setEmployees, icon: React.createElement(IconUsers, { size: 20 }), formatValue: fmtNum }),
+              React.createElement(SliderCard, { label: t('sliderHoursLabel'), description: t('sliderHoursDesc'), value: hoursPerDay, min: 0.1, max: 4, step: 0.1, onChange: setHoursPerDay, icon: React.createElement(IconClock, { size: 20 }), formatValue: v => `${fmtNum(v)} ${t('hrs')}` }),
+              React.createElement(SliderCard, { label: t('sliderRateLabel'), description: t('sliderRateDesc'), value: hourlyRate, min: 10, max: 200, step: 1, onChange: setHourlyRate, icon: React.createElement(IconDollar, { size: 20 }), formatValue: fmtCurrency })
+            )
+          )
+        ),
+        // Right: stats + risk cards
+        React.createElement('div', { className: 'lg:col-span-8 flex flex-col gap-4' },
+          React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-4' },
+            React.createElement(StatCard, { title: t('hoursLostTitle'), value: fmtNum(hoursPerWeek), description: t('hoursLostDesc'), icon: React.createElement(IconClock, { size: 32 }) }),
+            React.createElement(StatCard, { title: t('moneyWastedTitle'), value: fmtCurrency(moneyPerYear), description: t('moneyWastedDesc'), icon: React.createElement(IconDollar, { size: 32 }) })
+          ),
+          React.createElement(StatCard, { title: t('savingsTitle'), value: fmtCurrency(savings), description: t('savingsDesc'), icon: React.createElement(IconTrending, { size: 40 }), highlight: true }),
+          // Scale section
+          React.createElement('div', null,
+            React.createElement('div', { className: 'flex items-center gap-2 mb-2 px-1' },
+              React.createElement('span', { className: 'text-xs font-semibold text-slate-500 uppercase tracking-widest' }, t('scaleLabel')),
+              React.createElement('div', { className: 'flex-1 h-px bg-slate-200' })
+            ),
+            React.createElement('div', { className: 'grid grid-cols-2 gap-4' },
+              React.createElement(RiskCard, {
+                title: t('conflictsTitle'),
+                description: t('conflictsDesc'),
+                icon: React.createElement(IconMerge, { size: 16 }),
+                severity: conflictSev,
+                fillPct: conflictPct,
+                headlineMetric: { label: t('conflictsWeek'), value: fmtNum(conflicts) },
+                metrics: [
+                  { label: t('conflictsWeek'), value: fmtNum(conflicts) },
+                  { label: t('annualReworkCost'), value: fmtCurrency(reworkCost) }
+                ]
+              }),
+              React.createElement(RiskCard, {
+                title: t('sprawlTitle'),
+                description: t('sprawlDesc'),
+                icon: React.createElement(IconDB, { size: 16 }),
+                severity: sprawlSev,
+                fillPct: sprawlPct,
+                headlineMetric: { label: t('storageSilos'), value: fmtNum(silos) },
+                metrics: [
+                  { label: t('storageSilos'), value: fmtNum(silos) },
+                  { label: t('duplicateDocs'), value: fmtNum(dupDocs) },
+                  { label: t('aiReadiness'), value: aiReadiness + '%' }
+                ]
+              })
+            )
+          )
+        )
+      ),
+      // Table
+      React.createElement(ROITable, { hoursPerDay, hourlyRate }),
+      // Disclaimer
+      React.createElement('div', { className: 'mt-8 flex items-start gap-3 p-4 rounded-xl bg-slate-100/50 text-slate-500 text-sm max-w-4xl border border-slate-200/50' },
+        React.createElement(IconAlert, { size: 20, className: 'shrink-0 text-slate-400 mt-0.5' }),
+        React.createElement('p', { className: 'leading-relaxed' }, t('disclaimer'))
+      )
+    )
+  );
+}
+
+function Root() {
+  return React.createElement(LanguageProvider, null, React.createElement(App, null));
+}
+
+createRoot(document.getElementById('root')).render(React.createElement(Root, null));
+    </script>
+  </body>
+</html>
